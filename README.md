@@ -13,7 +13,7 @@ or:
 
 ```
 git clone https://github.com/lauregonnord/cap-labs18.git
-cd cap-labs
+cd cap-labs18
 git submodule update --init
 ```
 
