@@ -1,0 +1,5 @@
+plot "dataout.txt" using 1:2 title "Instruction Read"
+replot "dataout.txt" using 1:3 title "Memory Read"
+replot "dataout.txt" using 1:4 title "Memory Write"
+replot "dataout.txt" using 1:5 title "Get/Set counters"
+replot "dataout.txt" using 1:6 title "Total"

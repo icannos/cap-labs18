@@ -1,0 +1,415 @@
+# Remarques sur l'architecture
+
+Le fichier a été mis à jour pour le rendu 3. Les statistiques confirment
+essentiellement ce qui a été suggéré plus tôt :
+
+- Quelques statistiques d'utilisation
+
+Les remarques du rendu 2 portaient sur la gestion de la mémoire :
+
+- L'unique mode d'adressage
+- Les compteurs disjoints des registres
+- Une note sur l'argument de call
+
+Finalement, les remarques du rendu 1 concernaient le jeu d'instructions :
+
+- Les fonctions de calcul de base
+- L'absence de décalage de bits dynamique
+- Le choix de `addi` et `subi` non-signés
+- Le bit de direction de `shift`
+- Les sauts absolus signés (Sébastien)
+
+
+
+## Quelques statistiques d'utilisation
+
+Voilà ce qui se passe en termes de nombre d'instructions durant une partie de
+BRIX d'une bonne minute:
+
+    add2   324696     add2i  341633     sub2   0          sub2i  161537
+    cmp    140921     cmpi   1629180    let    823713     leti   807787
+    shift  471559     readze 1329892    readse 0          jump   173606
+    jumpif 1933171    or2    60809      or2i   0          and2   0
+    and2i  89856      write  391101     call   815274     setctr 1743155
+    getctr 891339     push   517084     return 815273     add3   191
+    add3i  131881     sub3   900        sub3i  0          and3   11839
+    and3i  145315     or3    0          or3i   0          xor3   95
+    xor3i  60561      asr3   0          sleep  10870
+
+    Total  13823238
+
+On peut déjà repérer les grands perdants : les instructions logiques sont
+rarement exécutées. Évidemment, l'émulateur Chip8 ne présage pas de la
+généralité, mais or3, or3i, and3 et and3i pourraient être les premières cibles
+s'il fallait réduire le nombre d'instructions à trois opérandes.
+
+Du reste, le top 10 des instructions les plus utilisées est :
+
+    1.  jumpif   1933171   (13.98 %)
+    2.  setctr   1743155   (12.61 %)
+    3.  cmpi     1629180   (11.78 %)
+    4.  readze   1329892    (9.62 %)
+    5.  getctr    891339    (6.44 %)
+    6.  let       823713    (5.95 %)
+    7.  call      815274    (5.89 %)
+    8.  return    815273    (5.89 %)
+    9.  leti      807787    (5.84 %)
+   10.  push      517084    (3.74 %)
+
+Typiquement, les opérations de décision (plus de 25 % de cmpi et jumpif) se
+rapprochent de la quantité de snif de l'année dernière. On observe aussi un
+nombre stratosphérique de getctr/setctr (19.05 %) qu'on avait vu venir (en tout
+cas c'est dans les remarques plus bas). Il y a certainement quelque chose à
+gagner ici.
+
+Le nombre de readze inclut tous les pop, et il y en a autant que des push (si
+tout de passe bien, ce qui était le cas lors de cette partie) ; ça nous laisse
+avec un demi-million d'opérations de pile. Il y en a beaucoup parce que j'ai
+mis beaucoup de fonctions dans le code de l'émulateur (voir le nombre de call/
+return).
+
+En tous cas, l'interface avec la mémoire est très utilisée donc probablement
+pas à négliger. Du reste, let et leti étaient parfaitement attendus en nombre.
+
+
+
+## L'unique mode d'adressage
+
+Le seul mode d'adressage dont on dispose est « compteur avec post-increment ».
+C'est restrictif pour pas mal de raisons :
+
+- On ne dispose que de deux pointeurs vers la mémoire, ce qui oblige toute
+  fonction qui manipule des pointeurs à sauvegarder et restaurer a0 et a1 à
+  longueur de pages.
+
+- Bien qu'utile pour clear_screen et pop (qui s'identifie du coup à un read),
+  le post-increment est assez souvent gênant. Tant qu'il s'agit de manipuler
+  des tableaux ou des chaînes de caractères c'est impeccable, mais dès qu'on
+  veut modifier une variable passée par adresse, il faut quelque chose comme :
+
+    getctr a0 r0	; Sauvegarder a0
+    setctr a0 r1	; r1 = adresse de la variable manipulée
+    readze a0 64 r2	; r2 = valeur manipulée
+    add2i r2 1 		; Modifier r2...
+    setctr a0 r1	; Recharger r1 car a0 a avancé sans nous
+    write a0 64 r2	; Réécrire la valeur modifiée
+    setctr a0 r0	; Restaurer a0
+
+  Ça, c'est si a0 est protégé par les conventions d'appel. Pour moi c'est le
+  cas : l'idée était que dans un parcours de tableau/liste/string/etc, on ne
+  veut pas que les fonctions appelées gênent le parcours. Si a0 ne l'est pas,
+  alors l'appelant l'a probablement sauvegardé pour son usage personnel, donc
+  on tourne en rond.
+
+- En particulier pour la pile, on aimerait avoir un pre-decrement. Cela
+  permettrait, ultimement, d'utiliser n'importe lequel de sp, a0 et a1 pour
+  faire une pile, et quand la pile n'est pas requise, de disposer de trois
+  pointeurs au lieu de deux.
+
+- L'autre problème sérieux est qu'on ne peut pas ajouter d'offset à un accès
+  mémoire. Toute fonction qui stocke ses variables locales sur la pile a besoin
+  d'un mode d'adressage du type *(sp + offset) pour ne pas avoir à dépiler la
+  moitiés de ses données chaque fois qu'une variable est utilisée.
+
+  Du coup, on se retrouve à jongler fébrilement entre les registres et la pile.
+  Mais dès qu'on veut libérer de la place dans plus de 4 registres, on se
+  trouve obligé de sauvegarder leur valeur (conventions d'appel obligent)... et
+  si on les met sur la pile, on perd l'accès aux données empilées que l'on
+  voulait manipuler en premier lieu.
+
+  La fonction draw de prog/lib_draw.s a nécessité plus d'ingénierie sur la
+  manipulation des données que sur l'implémentation du tracé proprement dit,
+  pour être honnête. Je n'ai pas pu m'en sortir de façon élégante sans profiter
+  du fait que les deux arguments empilés pouvaient être dépilés d'un seul coup
+  parce qu'ils tenaient simultanément dans un registre.
+
+
+
+## Les compteurs disjoints des registres
+
+Le fait que les compteurs ne soient pas des registres oblige à les récupérer
+chaque fois qu'on veut faire des calculs pour les renvoyer à la mémoire
+ensuite. Par ailleurs, PC n'est utilisé que dans deux cas : pour connaître
+l'adresse de données introduites par un .const (voir font\_lea à la fin de
+prog/lib_font.s) et pour effectuer un saut absolu avec setctr. Le deuxième
+usage disparaîtrait facilement si on utilisait des registres pour adresser.
+
+Quitte à ajouter un bit de plus par instruction mémoire, on pourrait adresser
+avec n'importe quel registre à la place des compteurs. On passerait de deux
+pointeurs à huit pointeurs, en toutes circonstances.
+
+Et ce ne serait pas forcément coûteux en termes de code : à titre d'exemple,
+prog/drawing.bin effectue 2462 manipulations de compteur (invocations de getctr
+et setctr) pour 28826 instructions, soit 8.54% du total. Tout ça parce que les
+compteurs sont protégés par les conventions d'appel, parce qu'ils ne sont que
+deux.
+
+(À la réflexion, j'imagine que protéger un seul compteur par les conventions
+d'appel serait plus efficace, mais ça ne change pas le problème dans le cas où
+les fonctions manipulent au moins deux pointeurs. Elles devront toujours
+sauvegarder celui qui n'est pas protégé pour leur usage futur.)
+
+Reste le cas de SP. Il me semble pertinent de le stocker dans r7 quitte à
+toujours placer les adresses de retour sur la pile. (Je crois que c'est ce qui
+se passe sur x86, d'ailleurs.) Si l'on combinait tout ça avec des modes
+d'adressage un chouille plus riches, par exemple « registre », « registre avec
+post-increment », « registre avec pre-decrement » et « registre avec offset »,
+on gagnerait beaucoup en puissance sur la gestion de la mémoire pour pas cher.
+
+Bien sûr, utiliser des registres comme compteurs signifierait que la mémoire
+doit en avoir aussi une copie, et là c'est juste impossible. Mais ce problème
+se pose déjà dans une moindre mesure avec les compteurs.
+
+Le meilleur compromis qui me vienne à l'esprit, entre passer 64 bits sur le bus
+d'adresse à chaque accès, et dupliquer la logique des compteurs au niveau de la
+mémoire, serait de fournir un système de segmentation dynamique. L'utilisateur
+définirait dynamiquement l'adresse 0 d'un segment (parmi, par exemple, quatre
+qu'il manipulerait à loisir) et fournirait ensuite des adresses relatives à ce
+segment. On utiliserait alors les registres comme pointeurs, mais en manipulant
+des valeurs beaucoup plus courtes sur le bus d'adresses.
+
+
+
+## Une note sur l'argument de call
+
+Sans parler de son signe (sur lequel il y a encore un pavé plus bas), le fait
+qu'il soit absolu ne correspond pas aux méthodes « habituelles » (il me
+semble), à savoir un call absolu dont l'adresse est donnée par un registre, et
+un call relatif dont l'offset est donné en paramètre de l'instruction.
+
+Sur nos petits programmes on n'a pas le moindre problème, mais sur un vrai
+système où la mémoire virtuelle fait 2^64 bits de taille et où les libs
+dynamiques sont possiblement chargées aux antipodes du programme exécuté,
+utiliser des calls absolus partout risque de coûter cher à la longue.
+
+L'intérêt de séparer en un call absolu (registre) et un relatif (immédiat) est
+triple. D'abord, les procédures proches peuvent s'appeller à moindres frais
+même si leur adresse est très grande dans l'espace virtuel.
+
+Ensuite, on peut écrire des fonctions d'ordre supérieur. C'est déjà possible
+pour l'instant parce qu'on a setctr pc et getctr pc, mais il faut mettre les
+mains dans le système pour calculer r7 correctement lorsqu'on veut faire un
+appel de procédure à une adresse donnée par un registre :
+
+    getctr pc r7
+    add2i  r7 28 ; Taille du add2i + setctr
+    setctr pc r0 ; Sauter à l'adresse de r0
+
+Inutile de dire que ça va arrêter de fonctionner dès que je vais rééquilibrer
+l'arbre de Huffman avec d'autres statistiques.
+
+Enfin, on pourrait écrire du code indépendant de la position. Pour l'instant,
+il est impossible d'écrire des libs dynamiques dans cet assembleur sans
+recourir à des tricks barbares pour calculer la longueur des sauts sans
+recourir au moindre call. C'est un peu gênant.
+
+
+
+## Les fonctions de calcul de base
+
+Ça n'en a pas l'air à première vue, mais il y a pas mal de calculs/opérations
+qu'on devrait pouvoir faire en deux lignes maximum et qui sont contraignantes à
+réaliser. On peut citer par exemple :
+
+- L'opposé (leti puis sub3i, nécessite un nouveau registre)
+- La valeur absolue (cmpi, jumpif, puis calcul de l'opposé)
+- L'addition et la soustraction avec carry (nécessite des jumpif c/nc), connus
+  pour les opérations sur des doubles registres, ici la multiplication complète
+  de deux registres 64 × 64 → 128
+- Le complémentaire binaire (leti puis xor3, nouveau registre requis)
+- Le décalage de bits universel (celui-là est bien catastrophique, voir après)
+- Des instructions pour lire/écrire les flags (nécessite des paquets de jumpif)
+- Lire des pointeurs sans les modifier (read*, getctr, subi, setctr si on n'a
+  pas une copie clean dans un registre)
+- Un saut universel (marche avec setctr pc rn, mais au moins mettre un alias)
+
+À côté de ça, on a beaucoup de doublons sur des instructions à trois opérandes,
+qui permettent certes de compacter le code dans certaines situations, mais qui
+ne compensent probablement pas la complexité des opérations ci-dessus.
+
+D'ailleurs, il convient de noter que l'opposé, la valeur absolue, l'addition et
+la soustraction avec carry, ainsi que l'accès direct aux flags nécessitent tous
+des sauts supplémentaires, ce que la pipeline n'appréciera probablement pas.
+
+Donc, utiliser les opcodes pour faire des opérations supplémentaires au lieu
+de surcharger celles qui existent serait certainement plus stratégique.
+
+
+
+## L'absence de décalage de bits dynamique
+
+Il n'y a aucune instruction qui permette d'effectuer `r0 = r0 << r1`, c'est
+contraignant. L'implémentation d'une telle fonction à partir du `shift`
+nécessite au moins 64 lignes (puisqu'il y a 64 décalages différents possibles).
+La plus optimisée qui me vienne à l'esprit consiste à sauter au bon endroit
+dans une suite de shift/return, mais ça nécessite d'ajuster PC à la volée en y
+ajoutant 22 × r1 (22 étant la taille d'un shift + return). Et comme il n'y a
+pas de multiplication simple, il faudrait au moins une chaîne additive pour
+faire ce calcul, et celle de 22 est longue (du genre 1→2→4→5→10→11→22).
+
+Et bien entendu ça ne marche que pour un registre cible et un registre source
+particuliers, il faut encore se coltiner tous les transferts pour l'utiliser.
+Et ça ne permet pas de changer le sens du shift si `r1` est négatif. Bref...
+alors que dans l'autre sens, c'est nettement plus trivial pour implémenter le
+shift constant à partir du dynamique :
+
+    leti    r1 4
+    shiftd  r0 r1
+
+À ma connaissance, les archis implémentent plutôt le dynamique. Le seul exemple
+que je connaisse assez bien est le SuperH, et il ne possède de shift constant
+que pour des cas courants. Il a en fait les instructions suivantes :
+
+    shld    ri, rd      (Shift Logical Dynamic)
+    shad    ri, rd      (Shift Arithmetical Dynamic)
+    shllx   rd          (x = 1, 2, 8, 16)
+    shlrx   rd          (x = 1, 2, 8, 16)
+
+
+
+## Le choix de `addi` et `subi` non-signées
+
+Les instructions `addi` et `subi` savent toutes les deux réaliser exactement
+les mêmes opérations à cause de l'espace 64 bits circulaire. La seule chose qui
+les différencie est combien de bits il faut pour ajouter une constante donnée.
+
+En comparaison, un `addsi rd, cst` signé permettrait de faire les mêmes
+opérations à lui tout seul. La seule différence par rapport à `addi` et `subi`
+est le nombre de bits qu'il faut pour encoder les constantes qui sont à cheval
+entre deux classes. Par exemple 250 s'écrit sur 8 bits en non-signé, mais pas
+en signé (il faut alors recourir à la classe 32 bits pour `addsi`).
+
+Si l'on évalue le passage de la paire `addi`, `subi` à l'unique instruction
+`addsi`, on a donc d'un côté la perte résultant de l'usage de classes plus
+grandes pour certaines constantes et de l'autre le gain d'un opcode.
+
+Je ne vois pas de cas particulier qui puisse justifie que les constantes à la
+limite entre deux classes aient absolument besoin d'être encodées dans la plus
+petite de ces classes (ie. on ne se sert pas particulièrement souvent de 250,
+par exemple...), donc *a priori* le choix de `addsi` me paraît plus indiqué.
+
+À noter que ce choix n'est pas compatible avec la soustraction si on désigne le
+flag C comme étant un borrow (ie. leti r1 4; sub r0 r1 et addsi r0 -4 ne
+donneraient pas le même C). Comme ARM a un carry et qu'on est visiblement
+partis sur un carry, ça ne pose pas de souci.
+
+
+
+## Le bit de direction de `shift`
+
+Entre ajouter un paramètre d'un bit au `shift` et utiliser deux opcodes, il n'y
+a *a priori* pas beaucoup de différences. Mais on peut se permettre de voir le
+bit de direction comme un bit supplémentaire distinguant deux opcodes :
+
+    shift left      10000
+    shift right     10001
+
+Et cela revient exactement à opérer une séparation dans l'arbre de Huffman du
+jeu d'instructions pour scinder `1000` en deux opcodes.
+
+Or, si `shift left` et `shift right` étaient considérées comme deux
+instructions indépendantes, l'algorithme de Huffman pourrait faire un choix
+plus optimisé que de les mettre côte à côté dans l'arbre. Du coup, il me semble
+que le choix de deux opcodes est toujours meilleur.
+
+
+
+## Les saut absolus signés (Sébastien)
+
+Comme vous ne m'avez pas trouvé convaincant en cours, je retente ma chance au
+propre. Mon « argumentation » se tient en trois points :
+
+1. Placer des fonctions à des addresses négatives n'apporte rien de nouveau
+2. Gérer la mémoire d'un programme qui saute dans les négatifs est contraignant 
+3. Si on ne saute pas dans les négatifs, on perd de la place dans les `call`
+
+Si la taille du code est de l'ordre de la taille de la mémoire (ie. le code
+prend toute la place), alors ça ne sert à rien d'en discuter puisque faire des
+sauts signés ou non signés revient exactement au même : on saute partout. Je me
+place donc dans le cas où la taille du programme est « faible », disons pas
+plus d'1/4 de la mémoire. En particulier, le programme tient dans une seule
+moitié de la mémoire.
+
+Pour appuyer le premier point, considérons un programme qui a des fonctions
+dans la zone d'adresses positives et dans la zone d'adresses négatives. Pour
+optimiser la place prise dans la mémoire, il est naturel de vouloir utiliser
+les addresses représentables sur peu de bits, donc de faibles valeurs absolues.
+On se retrouve alors dans cette situation :
+
+    Négatifs <------ 0 ------> Positifs      (Figure 1)
+    ...  Programme   |   Programme  ...
+
+Cependant, par une simple translation, on peut se ramener à une situation où
+seule la moitié positive de la mémoire est utilisée :
+
+    <-- 0 -----------------> Positifs        (Figure 2)
+    ... |  Programme   Programme  ...
+
+La translation n'a pas de coût sur le nombre de bits nécessaire pour encoder
+les adresses si on pense à passer `call` en non-signé. De plus, le loader du
+système peut bien partitionner la mémoire virtuelle comme ça lui chante, donc
+faire le second choix n'est pas contraignant. Ainsi, utiliser les addresses
+négatives ne permet rien de plus que ce qu'on a avec uniquement les positives.
+
+Concernant le second point : si on regarde comment un loader s'y prend pour
+charger un programme, on se rend compte que les exécutables sont chargés d'un
+seul bloc. Par exemple, la localisation dans la mémoire virtuelle de
+l'exécutable de Firefox Nightly sur mon PC ressemble à ceci :
+
+    0000000000400000    212K r-x-- /opt/firefox-nightly/firefox
+    0000000000634000      4K r---- /opt/firefox-nightly/firefox
+    0000000000635000      4K rw--- /opt/firefox-nightly/firefox
+
+Donc trois sections : le code en lecture/exécution, suivi de la section de
+données en lecture seule, puis la section de donnée en lecture/écriture. Le
+code proprement dit est donc chargé dans une zone de mémoire continue (212K).
+
+Si jamais on veut mettre du code à la fois dans les adresses positives et
+négatives, on doit toujours s'imposer au moins une complication quelque part
+dans le processus de développement/compilation/exécution :
+
+- Soit on sépare la section de texte en plusieurs morceaux, mais alors des
+  références internes au programme peuvent être cassées (comme « saute à
+  l'addresse qui est à 172 octets de l'instruction actuelle ») si la coupure
+  intervient n'importe comment. Il faut donc compiler les programmes avec
+  d'infinies précautions pour qu'il puisse y avoir un découpage qui ne casse
+  rien, et on n'a même pas de garantie qu'on pourra découper comme on voudra ;
+
+- Soit on garde tout dans un bloc autour de 0 (comme sur la figure 1), mais
+  alors l'assembleur doit choisir où va chaque fonction (dans les positifs, ou
+  dans les négatifs), en sachant que pour que les `call` soient efficaces il
+  faut utiliser autant de négatifs que de positifs. (Par exemple si on utilise
+  [-30, 170], 8 bits ne suffisent pas pour représenter 170, mais si on utilise
+  intelligement [-100, 100], toutes les adresses tiennent sur 8 bits.) Alors
+  que si on n'utilise que les positifs on part de 0 et on va croissant, ce qui
+  garantit la compacité maximale sans effort.
+
+Ainsi supporter le code dans les zones d'adresses négatives est plus compliqué
+que de s'en tenir aux positives. Suffisamment pour que je n'aie,
+personnellement, pas envie de me casser la tête avec.
+
+On en vient au troisième point. Si on se contente de mettre le code dans les
+zones d'adresses positives pour s'éviter les tracas exposés plus haut, il y
+aura tout un paquet de `call` qu'on ne fera pas ; tous ceux qui sont de la
+forme suivante :
+
+    call 0   1xxxxxxx
+    call 10  1xxxxxxxxxxxxxxx
+    call 110 1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    call 111 1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+Et ce car l'extension de signe rendrait les addresses ciblées négatives, donc
+nous enverrait vers la deuxième moitié de la mémoire. Or, comme le programme
+est petit, il tient dans la première moitié (c'était notre hypothèse).
+
+Par conséquent, le premier bit de toutes les adresses de saut sera
+systématiquement 0. Un 0 constant ne portant aucune information, on gaspille un
+bit par utilisation de `call`. (Et ça on n'a pas envie.)
+
+Alors que tout ce que l'utilisation d'un `call` non-signé impose est
+l'implémentation en matériel d'une copie du circuit de décodage des adresses,
+qui ferait des extensions logiques au lieu d'extensions arithmétiques. Et si
+ma compréhension de l'électronique est suffisamment précise, il suffit en fait
+d'ajouter un porte ET entre le signal « extension logique = 0, extension
+arithmétique = 1 » et le MSB au moment de l'extension pour obtenir le résultat
+désiré. Cela me paraît relativement simple à gérer en comparaison.

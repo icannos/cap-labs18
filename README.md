@@ -6,19 +6,12 @@ Public files for ENSL M1 students (CAP course)
 # Get the repository
 
 ```
-git clone https://github.com/lauregonnord/cap-labs18.git --recursive
-```
-
-or:
-
-```
 git clone https://github.com/lauregonnord/cap-labs18.git
 cd cap-labs18
-git submodule update --init
 ```
 
 # Contact
 Laure Gonnord, Université Lyon 1, LIP [email](mailto:laure.gonnord@ens-lyon.fr)
 
 # Contributors
-Laure Gonnord, Matthieu Moy, Remy Grunblatt.
+Laure Gonnord, Matthieu Moy, Rémy Grünblatt.
