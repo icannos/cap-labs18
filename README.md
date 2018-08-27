@@ -1,8 +1,8 @@
 # cap-labs
-				   ![ensllogo](logos/logo_ensl.png)
-
-
 Public files for ENSL M1 students (CAP course)
+
+![ensllogo](logos/logo_ensl.png)
+
 
 [Official Website for CAP (where to find labs subjects)](http://laure.gonnord.org/pro/teaching/capM1.html)
 
