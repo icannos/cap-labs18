@@ -1,5 +1,5 @@
 MAINFILE = main
-PACKAGE = Exemple1b
+PACKAGE = Example1b
 
 ifndef ANTLR4
 abort:
