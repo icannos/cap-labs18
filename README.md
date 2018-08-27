@@ -1,6 +1,9 @@
 # cap-labs
+				   ![ensllogo](logos/logo_ensl.png)
+
+
 Public files for ENSL M1 students (CAP course)
-![ensllogo](logos/logo_ensl.png)
+
 [Official Website for CAP (where to find labs subjects)](http://laure.gonnord.org/pro/teaching/capM1.html)
 
 # Get the repository
@@ -11,8 +14,10 @@ cd cap-labs18
 ```
 
 # Contents
-target18/ : the target machine for the 2018-19 compiler. 
-TPxx/     : student companion files for CAP labs 2018-19.
+
+   * target18/ : the target machine for the 2018-19 compiler. 
+
+   * TPxx/     : student companion files for CAP labs 2018-19.
 
 
 # About the target machine
