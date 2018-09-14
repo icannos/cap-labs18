@@ -25,7 +25,8 @@ endif
 ifdef NO_SDL
 cflags += -D NO_SDL
 else
-lflags += -lSDL2
+cflags += $(shell sdl2-config --cflags)
+lflags += $(shell sdl2-config --libs)
 endif
 
 $(target): $(obj)
