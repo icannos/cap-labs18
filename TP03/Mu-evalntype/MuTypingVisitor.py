@@ -72,7 +72,7 @@ class MuTypingVisitor(MuVisitor):
             valtype = self._memorytypes[ctx.getText()]
             return valtype
         except KeyError:
-            raise MuTypeError("Use of undefined id: {}".format(ctx.getText()))
+            raise MuTypeError("Undefined variable {}".format(ctx.getText()))
 
     def visitStringAtom(self, ctx):
         return BaseType.String
