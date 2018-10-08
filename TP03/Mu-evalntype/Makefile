@@ -24,6 +24,10 @@ run: $(MAINFILE).py main-deps
 tests: test_evaluator.py main-deps
 	python3 -m pytest -v $< 
 
+BASEDIR=${shell pwd | xargs basename}
+tar: clean
+	cd ..; tar cvfz $(MYNAME).tgz $(BASEDIR) --transform 's/$(BASEDIR)/$(MYNAME)/'
+	@echo "Created ../$(MYNAME).tgz"
 
 clean:
 	rm -rf *~ $(PACKAGE)Parser.py $(PACKAGE)Lexer.py $(PACKAGE)Visitor.py *.pyc *.tokens  __pycache* ex/*~ .cache* ex-types/*~ *.interp
