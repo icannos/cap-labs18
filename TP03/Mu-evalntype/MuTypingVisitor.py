@@ -103,7 +103,7 @@ class MuTypingVisitor(MuVisitor):
     def visitMultiplicativeExpr(self, ctx):
         raise NotImplementedError()
 
-    def visitnotExpr(self, ctx):
+    def visitNotExpr(self, ctx):
         raise NotImplementedError()
 
     def visitUnaryMinusExpr(self, ctx):
