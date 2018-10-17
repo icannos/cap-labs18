@@ -46,8 +46,8 @@ clean:
 ../../TP03/Mu-evalntype/MuParser.py:
 	make -C ../../TP03/Mu-evalntype/
 
-../../target18/asm.py:
-	make -C ../../leia/simulateur/
+../../target18/emu/emu:
+	make -C ../../target18/emu/
 
 
 tests: ../../TP03/Mu-evalntype/MuParser.py ../../target18/asm.py antlr

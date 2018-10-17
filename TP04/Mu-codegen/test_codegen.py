@@ -31,7 +31,7 @@ ALL_FILES = glob.glob('tests/step1/*.mu')
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 
-TARGETM = os.path.join(HERE, '..', '..', 'leia')
+TARGETM = os.path.join(HERE, '..', '..', 'target18')
 
 ASM = os.path.join(TARGETM, '.', 'asm.py')
 SIMU = os.path.join(TARGETM, 'emu', 'emu')
