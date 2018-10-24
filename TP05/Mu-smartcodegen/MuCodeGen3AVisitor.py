@@ -203,8 +203,6 @@ class MuCodeGen3AVisitor(MuVisitor):
             if self._debug:
                 print("else  ")
             self.visit(ctx.stat_block())  # else branch code
-        # NOP, to avoid jump with offset +1.
-        self._prog.addInstructionSUB(R0, R0, 0)
         # At the end, put the label and pop!
         self._prog.addLabel(if_ctx_end_if)
         assert self.ctx_stack.pop() is if_ctx_end_if
