@@ -15,7 +15,7 @@ def replace_meta_i(old_i):
         target_label, op1, c, op2 = args
         return [
             Instru3A('cmp', op1, op2),
-            Instru3A('jumpif ', c,  target_label),
+            Instru3A('jumpif', c,  target_label),
         ]
     else:
         return
