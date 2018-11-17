@@ -153,8 +153,11 @@ class Instru3A(Instruction):
         Otherwise, the first operand is considered as the destination
         and others are source.
         """
-        return (self.get_name() == 'print' or self.get_name().startswith("print ") or
-                self.get_name() == 'cmp')
+        return (self.get_name() == 'print'
+                or self.get_name().startswith("print ")
+                or self.get_name() == 'cmp'
+                or self.get_name() == "jumpif"
+                or self.get_name() == "jump")
 
     def __str__(self):
         s = self._ins
